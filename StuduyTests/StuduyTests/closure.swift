@@ -18,6 +18,11 @@ func calculate(_ a:Int,_ b:Int,operation:(Int,Int) -> Int) -> Int{
     return operation(a,b)
 }
 
+func doSomething(action:() -> Void ){
+    print("start")
+    action()
+    print("end")
+}
 
 @main
 struct closureDemo {
@@ -66,10 +71,16 @@ struct closureDemo {
         
         closure() //10 这个闭包捕获的是外部变量x本身，而不是创建闭包那一刻的值。
         
+        //如果函数的最后一个参数是闭包，可以把这个闭包拿到小括号外面写。
+        let result1 = calculate(3, 5) { x,y in
+            x + y
+        }
         
+        print(result1)
         
-        
-        
+        doSomething {
+            print("do something")
+        }
         
     }
 }
