@@ -24,7 +24,7 @@ func doSomething(action:() -> Void ){
     print("end")
 }
 
-@main
+//@main
 struct closureDemo {
     static func main() {
         let addClosure = { (a:Int,b:Int) -> Int in
