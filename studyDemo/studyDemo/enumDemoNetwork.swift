@@ -13,7 +13,7 @@ func runNetwork(){
     enum NetworkResult{
         case success(data:String)
         case failure(error:String)
-        case loading(Progress:Double)
+        case  loading(progress:Double)
     }
     
     func handleResult(_ result: NetworkResult){
@@ -22,12 +22,13 @@ func runNetwork(){
             print("成功：\(data)")
         case .failure(let error):
             print("失败：\(error)")
-        case .loading(let progress)
+        case .loading(let progress):
             print("加载中：\(Int(progress * 100))%")
         }
     }
     
     handleResult(.success(data: "用户数据加载完成"))
-    handleResult(.loading(Progress: 0.65))
+    handleResult(.loading(progress: 0.65))
     handleResult(.failure(error: "网络连接超时"))
+    
 }
