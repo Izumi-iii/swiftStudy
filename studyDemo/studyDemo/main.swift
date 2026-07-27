@@ -9,4 +9,14 @@ import Foundation
 
 print("Hello, World!")
 
-runCircle()
+//runCircle()
+//
+//runCharacter()
+//
+//runNetworkError()
+
+//await runAsyncCoffeeDemo()
+
+await runAsyncUserProfileDemo()
+
+

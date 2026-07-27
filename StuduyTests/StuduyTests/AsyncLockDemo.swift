@@ -81,7 +81,7 @@ final class LockDemoViewModel: ObservableObject {
                 await lock.release()
                 
                 
-            }
+            }   
         }
     }
 }
