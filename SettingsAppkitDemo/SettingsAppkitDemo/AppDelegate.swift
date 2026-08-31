@@ -1,30 +1,43 @@
-//
-//  AppDelegate.swift
-//  SettingsAppkitDemo
-//
-//  Created by wangjie on 2026/8/31.
-//
-
 import Cocoa
 
-@main
 class AppDelegate: NSObject, NSApplicationDelegate {
-
-    
-
+    private var window: NSWindow?
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
-        // Insert code here to initialize your application
+        NSApp.setActivationPolicy(.regular)
+        showMainWindow()
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     func applicationWillTerminate(_ aNotification: Notification) {
-        // Insert code here to tear down your application
     }
 
-    func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            showMainWindow()
+        }
+
         return true
     }
 
+    private func showMainWindow() {
+        if let window {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
 
+        let viewController = ViewController()
+        let window = NSWindow(contentViewController: viewController)
+        window.title = "SettingsAppkitDemo"
+        window.setContentSize(NSSize(width: 720, height: 560))
+        window.minSize = NSSize(width: 680, height: 480)
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
+        window.isReleasedWhenClosed = false
+        window.center()
+
+        self.window = window
+        window.makeKeyAndOrderFront(nil)
+    }
 }
-
