@@ -8,14 +8,28 @@
 import Cocoa
 
 final class ViewController: NSViewController, SettingsViewDelegate {
+    private static let preferredWindowContentSize = NSSize(width: 760, height: 540)
+
+    private let splitViewController = NSSplitViewController()
+    private let sidebarViewController = SettingsSidebarViewController()
+    private let detailViewController = NSViewController()
     private let settingsView = SettingsView(frame: .zero)
+    private var didSetInitialWindowSize = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        view = settingsView
+        configureSplitViewController()
+        view = splitViewController.view
+        addChild(splitViewController)
+
         settingsView.delegate = self
         settingsView.render(Self.previewState)
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        configureWindow()
     }
 
     override var representedObject: Any? {
@@ -92,6 +106,79 @@ final class ViewController: NSViewController, SettingsViewDelegate {
             isCheckingPermissions: false,
             outputOptions: outputOptions
         )
+    }
+
+    private func configureWindow() {
+        guard let window = view.window else { return }
+
+        window.title = "Settings"
+        window.titleVisibility = .visible
+        window.titlebarAppearsTransparent = true
+        window.styleMask.insert(.fullSizeContentView)
+        window.isMovableByWindowBackground = true
+        window.backgroundColor = .windowBackgroundColor
+        window.minSize = NSSize(width: 740, height: 520)
+
+        if !didSetInitialWindowSize {
+            window.setContentSize(Self.preferredWindowContentSize)
+            didSetInitialWindowSize = true
+        }
+
+        let toolbar = NSToolbar(identifier: "SettingsToolbar")
+        toolbar.delegate = self
+        toolbar.displayMode = .iconOnly
+        toolbar.allowsUserCustomization = false
+        window.toolbar = toolbar
+        window.toolbarStyle = .unified
+    }
+
+    private func configureSplitViewController() {
+        sidebarViewController.selectionHandler = { [weak self] page in
+            self?.settingsView.selectPage(page)
+        }
+
+        detailViewController.view = settingsView
+
+        let sidebarItem = NSSplitViewItem(
+            sidebarWithViewController: sidebarViewController
+        )
+        sidebarItem.minimumThickness = 236
+        sidebarItem.maximumThickness = 260
+        sidebarItem.canCollapse = false
+
+        let detailItem = NSSplitViewItem(viewController: detailViewController)
+        detailItem.minimumThickness = 500
+
+        splitViewController.splitView.isVertical = true
+        splitViewController.splitView.dividerStyle = .thin
+        splitViewController.addSplitViewItem(sidebarItem)
+        splitViewController.addSplitViewItem(detailItem)
+    }
+
+}
+
+extension ViewController: NSToolbarDelegate {
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        nil
+    }
+
+    func toolbarAllowedItemIdentifiers(
+        _ toolbar: NSToolbar
+    ) -> [NSToolbarItem.Identifier] {
+        toolbarDefaultItemIdentifiers(toolbar)
+    }
+
+    func toolbarDefaultItemIdentifiers(
+        _ toolbar: NSToolbar
+    ) -> [NSToolbarItem.Identifier] {
+        [
+            .sidebarTrackingSeparator,
+            .flexibleSpace
+        ]
     }
 
 }

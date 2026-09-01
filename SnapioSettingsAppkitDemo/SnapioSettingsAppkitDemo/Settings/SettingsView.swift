@@ -34,7 +34,7 @@ public struct SettingsViewState: Equatable {
     }
 }
 
-private enum SettingsPage: Int, CaseIterable, Hashable {
+enum SettingsPage: Int, CaseIterable, Hashable {
     case general
     case shortcuts
     case output
@@ -62,8 +62,209 @@ private enum SettingsPage: Int, CaseIterable, Hashable {
     }
 }
 
+@MainActor
+final class SettingsSidebarViewController:
+    NSViewController,
+    NSTableViewDataSource,
+    NSTableViewDelegate {
+    var selectionHandler: ((SettingsPage) -> Void)?
+
+    private let tableView = NSTableView()
+    private let scrollView = NSScrollView()
+    private let backgroundWash = SettingsSidebarWashView()
+    private var isSelectingProgrammatically = false
+
+    override func loadView() {
+        let visualView = NSVisualEffectView()
+        visualView.material = .sidebar
+        visualView.blendingMode = .withinWindow
+        visualView.state = .active
+        view = visualView
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+
+        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("SettingsPage"))
+        column.resizingMask = .autoresizingMask
+        tableView.addTableColumn(column)
+        tableView.headerView = nil
+        tableView.style = .sourceList
+        tableView.rowHeight = 32
+        tableView.intercellSpacing = .zero
+        tableView.backgroundColor = .clear
+        tableView.dataSource = self
+        tableView.delegate = self
+
+        scrollView.documentView = tableView
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(scrollView)
+        backgroundWash.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(backgroundWash, positioned: .below, relativeTo: scrollView)
+
+        NSLayoutConstraint.activate([
+            backgroundWash.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundWash.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundWash.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundWash.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 4),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -4),
+            scrollView.topAnchor.constraint(equalTo: view.topAnchor, constant: 72),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -10)
+        ])
+
+        tableView.reloadData()
+        select(.general)
+    }
+
+    func select(_ page: SettingsPage) {
+        isSelectingProgrammatically = true
+        tableView.selectRowIndexes(
+            IndexSet(integer: page.rawValue),
+            byExtendingSelection: false
+        )
+        isSelectingProgrammatically = false
+    }
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        SettingsPage.allCases.count
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        heightOfRow row: Int
+    ) -> CGFloat {
+        32
+    }
+
+    func tableView(
+        _ tableView: NSTableView,
+        viewFor tableColumn: NSTableColumn?,
+        row: Int
+    ) -> NSView? {
+        guard row < SettingsPage.allCases.count else { return nil }
+
+        let page = SettingsPage.allCases[row]
+        let identifier = NSUserInterfaceItemIdentifier("SettingsSidebarItem")
+        let cell = tableView.makeView(withIdentifier: identifier, owner: self)
+            as? NSTableCellView ?? makeSidebarCell(identifier: identifier)
+
+        cell.textField?.stringValue = page.title
+
+        return cell
+    }
+
+    func tableViewSelectionDidChange(_ notification: Notification) {
+        guard !isSelectingProgrammatically else { return }
+        let row = tableView.selectedRow
+        guard row >= 0, row < SettingsPage.allCases.count else { return }
+        selectionHandler?(SettingsPage.allCases[row])
+    }
+
+    private func makeSidebarCell(
+        identifier: NSUserInterfaceItemIdentifier
+    ) -> NSTableCellView {
+        let cell = NSTableCellView()
+        cell.identifier = identifier
+
+        let label = NSTextField(labelWithString: "")
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.font = .systemFont(ofSize: 13, weight: .semibold)
+        label.lineBreakMode = .byTruncatingTail
+
+        cell.textField = label
+        cell.addSubview(label)
+
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 12),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: cell.trailingAnchor, constant: -8),
+            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+        ])
+
+        return cell
+    }
+}
+
+private final class SettingsSidebarWashView: NSView {
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.systemSettingsSidebarWash.setFill()
+        dirtyRect.fill()
+    }
+}
+
 private final class FlippedDocumentView: NSView {
     override var isFlipped: Bool { true }
+}
+
+private final class RoundedBackgroundView: NSView {
+    var fillColor: NSColor = .controlBackgroundColor {
+        didSet { needsDisplay = true }
+    }
+    var cornerRadius: CGFloat = 10 {
+        didSet { needsDisplay = true }
+    }
+
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        fillColor.setFill()
+        NSBezierPath(
+            roundedRect: bounds,
+            xRadius: cornerRadius,
+            yRadius: cornerRadius
+        ).fill()
+    }
+}
+
+private final class SettingsDetailBackgroundView: NSView {
+    override var isFlipped: Bool { true }
+    override var isOpaque: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.systemSettingsContentBackground.setFill()
+        dirtyRect.fill()
+    }
+}
+
+private extension NSColor {
+    static var systemSettingsSidebarWash: NSColor {
+        NSColor(name: nil) { appearance in
+            let bestMatch = appearance.bestMatch(from: [.darkAqua, .aqua])
+            if bestMatch == .darkAqua {
+                return NSColor.black.withAlphaComponent(0.08)
+            }
+            return NSColor.white.withAlphaComponent(0.62)
+        }
+    }
+
+    static var systemSettingsContentBackground: NSColor {
+        NSColor(name: nil) { appearance in
+            let bestMatch = appearance.bestMatch(from: [.darkAqua, .aqua])
+            if bestMatch == .darkAqua {
+                return NSColor.windowBackgroundColor
+            }
+            return NSColor(calibratedWhite: 0.985, alpha: 1)
+        }
+    }
+
+    static var systemSettingsGroupBackground: NSColor {
+        NSColor(name: nil) { appearance in
+            let bestMatch = appearance.bestMatch(from: [.darkAqua, .aqua])
+            if bestMatch == .darkAqua {
+                return NSColor.white.withAlphaComponent(0.08)
+            }
+            return NSColor.white
+        }
+    }
 }
 
 @MainActor
@@ -98,23 +299,15 @@ public protocol SettingsViewDelegate: AnyObject {
 @MainActor
 public final class SettingsView:
     NSView,
-    NSTextFieldDelegate,
-    NSTableViewDataSource,
-    NSTableViewDelegate {
-    private static let minimumSize = NSSize(width: 800, height: 520)
+    NSTextFieldDelegate {
+    private static let minimumSize = NSSize(width: 500, height: 520)
 
     public weak var delegate: SettingsViewDelegate?
     public override var isOpaque: Bool { false }
     
     private var selectedPage: SettingsPage = .general
     
-    private let splitView = NSSplitView()
-    private let sidebarColumn = NSView()
-    private let sidebarContainer = NSVisualEffectView()
-    private let sidebarScrollView = NSScrollView()
-    private let sidebarTableView = NSTableView()
-    
-    private let detailContainer = NSView()
+    private let detailContainer = SettingsDetailBackgroundView()
     private var currentDetailView: NSView?
     
     private var generalPageView: NSView?
@@ -256,8 +449,13 @@ public final class SettingsView:
         currentDisplayRecorder.display(state.currentDisplayShortcut)
     }
 
+    func selectPage(_ page: SettingsPage) {
+        selectedPage = page
+        showPage(page)
+    }
+
     public override func draw(_ dirtyRect: NSRect) {
-        NSColor.windowBackgroundColor.setFill()
+        NSColor.systemSettingsContentBackground.setFill()
         dirtyRect.fill()
     }
 
@@ -270,15 +468,15 @@ public final class SettingsView:
             systemSymbolName: "gearshape",
             accessibilityDescription: "Settings"
         )
-        headerIcon.contentTintColor = .controlAccentColor
+        headerIcon.contentTintColor = .secondaryLabelColor
         headerIcon.imageScaling = .scaleProportionallyUpOrDown
         headerIcon.setAccessibilityLabel("Settings")
         headerIcon.translatesAutoresizingMaskIntoConstraints = false
         titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-        titleLabel.alignment = .center
+        titleLabel.alignment = .left
         subtitleLabel.textColor = .secondaryLabelColor
         subtitleLabel.maximumNumberOfLines = 2
-        subtitleLabel.alignment = .center
+        subtitleLabel.alignment = .left
 
         recorder.target = self
         recorder.action = #selector(shortcutRecorded)
@@ -449,7 +647,7 @@ public final class SettingsView:
             ]
         )
         directoryControl.orientation = .vertical
-        directoryControl.alignment = .centerX
+        directoryControl.alignment = .leading
         directoryControl.spacing = 6
         directoryControl.setContentCompressionResistancePriority(
             .defaultLow,
@@ -535,40 +733,46 @@ public final class SettingsView:
         errorRow.translatesAutoresizingMaskIntoConstraints = false
         settingsErrorBox.addSubview(errorRow)
 
-        configureSidebar()
-
         generalPageView = makeDetailPage(
             headerRow: makePageHeader(for: .general),
-            sections: [appInfoSection, privacySection]
+            sections: [
+                makeGroupedList(sections: [
+                    [appInfoSection, privacySection]
+                ])
+            ]
         )
         shortcutsPageView = makeDetailPage(
             headerRow: makePageHeader(for: .shortcuts),
-            sections: [shortcutSection, annotationShortcutSection]
+            sections: [
+                makeGroupedList(sections: [
+                    [shortcutSection],
+                    [annotationShortcutSection]
+                ])
+            ]
         )
         outputPageView = makeDetailPage(
             headerRow: makePageHeader(for: .output),
-            sections: [directorySection, fileNamingSection, formatSection]
+            sections: [
+                makeGroupedList(sections: [
+                    [directorySection],
+                    [fileNamingSection],
+                    [formatSection]
+                ])
+            ]
         )
 
-        splitView.isVertical = true
-        splitView.dividerStyle = .thin
-        splitView.translatesAutoresizingMaskIntoConstraints = false
-
-        sidebarColumn.translatesAutoresizingMaskIntoConstraints = false
         detailContainer.translatesAutoresizingMaskIntoConstraints = false
+        detailContainer.wantsLayer = true
+        detailContainer.layer?.backgroundColor = NSColor.systemSettingsContentBackground.cgColor
         detailContainer.addSubview(settingsErrorBox)
 
-        splitView.addArrangedSubview(sidebarColumn)
-        splitView.addArrangedSubview(detailContainer)
-        addSubview(splitView)
+        addSubview(detailContainer)
 
         NSLayoutConstraint.activate([
-            splitView.leadingAnchor.constraint(equalTo: leadingAnchor),
-            splitView.trailingAnchor.constraint(equalTo: trailingAnchor),
-            splitView.topAnchor.constraint(equalTo: topAnchor),
-            splitView.bottomAnchor.constraint(equalTo: bottomAnchor),
-
-            sidebarColumn.widthAnchor.constraint(equalToConstant: 235),
+            detailContainer.leadingAnchor.constraint(equalTo: leadingAnchor),
+            detailContainer.trailingAnchor.constraint(equalTo: trailingAnchor),
+            detailContainer.topAnchor.constraint(equalTo: topAnchor),
+            detailContainer.bottomAnchor.constraint(equalTo: bottomAnchor),
 
             widthAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumSize.width),
             heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumSize.height)
@@ -609,117 +813,120 @@ public final class SettingsView:
 
         showPage(.general)
     }
-    
-    private func configureSidebar() {
-        sidebarContainer.material = .sidebar
-        sidebarContainer.blendingMode = .behindWindow
-        sidebarContainer.state = .active
-        sidebarContainer.wantsLayer = true
-        sidebarContainer.layer?.cornerRadius = 12
-        sidebarContainer.layer?.masksToBounds = true
-        sidebarContainer.translatesAutoresizingMaskIntoConstraints = false
 
-        let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("Page"))
-        sidebarTableView.addTableColumn(column)
-        column.resizingMask = .autoresizingMask
-        sidebarTableView.headerView = nil
-        sidebarTableView.style = .sourceList
-        sidebarTableView.rowHeight = 28
-        sidebarTableView.selectionHighlightStyle = .sourceList
-        sidebarTableView.dataSource = self
-        sidebarTableView.delegate = self
-        sidebarTableView.backgroundColor = .clear
-        sidebarTableView.intercellSpacing = NSSize(width: 0, height: 2)
-        sidebarTableView.translatesAutoresizingMaskIntoConstraints = false
+    private func makeGroupedList(sections: [[NSView]]) -> NSView {
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .width
+        stack.spacing = 12
+        stack.translatesAutoresizingMaskIntoConstraints = false
 
-        sidebarScrollView.documentView = sidebarTableView
-        sidebarScrollView.hasVerticalScroller = false
-        sidebarScrollView.hasHorizontalScroller = false
-        sidebarScrollView.drawsBackground = false
-        sidebarScrollView.borderType = .noBorder
-        sidebarScrollView.translatesAutoresizingMaskIntoConstraints = false
+        for rows in sections {
+            let group = RoundedBackgroundView()
+            group.fillColor = .systemSettingsGroupBackground
+            group.cornerRadius = 12
+            group.translatesAutoresizingMaskIntoConstraints = false
+            group.setContentHuggingPriority(.required, for: .vertical)
 
-        sidebarColumn.addSubview(sidebarContainer)
-        sidebarContainer.addSubview(sidebarScrollView)
-        
-        NSLayoutConstraint.activate([
-            sidebarContainer.leadingAnchor.constraint(equalTo: sidebarColumn.leadingAnchor, constant: 28),
-            sidebarContainer.trailingAnchor.constraint(equalTo: sidebarColumn.trailingAnchor, constant: -12),
-            sidebarContainer.topAnchor.constraint(equalTo: sidebarColumn.topAnchor, constant: 42),
-            sidebarContainer.bottomAnchor.constraint(equalTo: sidebarColumn.bottomAnchor, constant: -8),
+            let groupStack = NSStackView()
+            groupStack.orientation = .vertical
+            groupStack.alignment = .width
+            groupStack.spacing = 0
+            groupStack.translatesAutoresizingMaskIntoConstraints = false
+            group.addSubview(groupStack)
 
-            sidebarScrollView.leadingAnchor.constraint(equalTo: sidebarContainer.leadingAnchor, constant: 10),
-            sidebarScrollView.trailingAnchor.constraint(equalTo: sidebarContainer.trailingAnchor, constant: -10),
-            sidebarScrollView.topAnchor.constraint(equalTo: sidebarContainer.topAnchor, constant: 54),
-            sidebarScrollView.bottomAnchor.constraint(equalTo: sidebarContainer.bottomAnchor, constant: -8)
-        ])
+            for (index, row) in rows.enumerated() {
+                groupStack.addArrangedSubview(row)
+                if index < rows.count - 1 {
+                    groupStack.addArrangedSubview(makeDivider())
+                }
+            }
 
-        sidebarTableView.reloadData()
-        sidebarTableView.selectRowIndexes(
-            IndexSet(integer: selectedPage.rawValue),
-            byExtendingSelection: false
-        )
-    }
+            NSLayoutConstraint.activate([
+                groupStack.leadingAnchor.constraint(equalTo: group.leadingAnchor),
+                groupStack.trailingAnchor.constraint(equalTo: group.trailingAnchor),
+                groupStack.topAnchor.constraint(equalTo: group.topAnchor),
+                groupStack.bottomAnchor.constraint(equalTo: group.bottomAnchor)
+            ])
 
-    public func tableView(
-        _ tableView: NSTableView,
-        heightOfRow row: Int
-    ) -> CGFloat {
-        28
-    }
-    
-    public func numberOfRows(in tableView: NSTableView) -> Int {
-        SettingsPage.allCases.count
-    }
-
-    public func tableView(
-        _ tableView: NSTableView,
-        viewFor tableColumn: NSTableColumn?,
-        row: Int
-    ) -> NSView? {
-        guard row < SettingsPage.allCases.count else { return nil }
-
-        let page = SettingsPage.allCases[row]
-        let cell = NSTableCellView()
-        let label = NSTextField(labelWithString: page.title)
-
-        cell.identifier = NSUserInterfaceItemIdentifier(page.title)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.font = .systemFont(ofSize: 13)
-
-        cell.addSubview(label)
-
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: cell.leadingAnchor, constant: 14),
-            label.trailingAnchor.constraint(equalTo: cell.trailingAnchor, constant: -10),
-            label.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
-        ])
-
-        return cell
-    }
-
-    public func tableViewSelectionDidChange(_ notification: Notification) {
-        let row = sidebarTableView.selectedRow
-        guard row >= 0, row < SettingsPage.allCases.count else { return }
-
-        selectedPage = SettingsPage.allCases[row]
-        showPage(selectedPage)
-    }
-
-    private func updateHeader() {
-        titleLabel.stringValue = selectedPage.title
-        headerIcon.image = NSImage(
-            systemSymbolName: selectedPage.symbolName,
-            accessibilityDescription: selectedPage.title
-        )
-        switch selectedPage {
-        case .general:
-            subtitleLabel.stringValue = "Manage Snapio capture permissions and application behavior."
-        case .shortcuts:
-            subtitleLabel.stringValue = "Configure keyboard shortcuts used for capture and annotation."
-        case .output:
-            subtitleLabel.stringValue = "Choose where Snapio saves PNG screenshots."
+            stack.addArrangedSubview(group)
         }
+
+        return stack
+    }
+
+    private func makeSettingsRow(
+        symbolName: String,
+        accessibilityLabel: String,
+        content: NSView,
+        showsChevron: Bool = false
+    ) -> NSView {
+        let row = NSView()
+        row.translatesAutoresizingMaskIntoConstraints = false
+        row.setContentHuggingPriority(.required, for: .vertical)
+
+        let iconBackground = RoundedBackgroundView()
+        iconBackground.fillColor = .tertiaryLabelColor.withAlphaComponent(0.35)
+        iconBackground.cornerRadius = 5
+        iconBackground.translatesAutoresizingMaskIntoConstraints = false
+
+        let icon = NSImageView()
+        icon.image = NSImage(
+            systemSymbolName: symbolName,
+            accessibilityDescription: accessibilityLabel
+        )
+        icon.contentTintColor = .white
+        icon.imageScaling = .scaleProportionallyDown
+        icon.setAccessibilityLabel(accessibilityLabel)
+        icon.translatesAutoresizingMaskIntoConstraints = false
+        iconBackground.addSubview(icon)
+
+        let chevron = NSImageView()
+        chevron.image = NSImage(
+            systemSymbolName: "chevron.right",
+            accessibilityDescription: nil
+        )
+        chevron.contentTintColor = .tertiaryLabelColor
+        chevron.imageScaling = .scaleProportionallyDown
+        chevron.isHidden = !showsChevron
+        chevron.translatesAutoresizingMaskIntoConstraints = false
+
+        content.translatesAutoresizingMaskIntoConstraints = false
+        row.addSubview(iconBackground)
+        row.addSubview(content)
+        row.addSubview(chevron)
+
+        NSLayoutConstraint.activate([
+            row.heightAnchor.constraint(greaterThanOrEqualToConstant: 56),
+            iconBackground.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 16),
+            iconBackground.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            iconBackground.widthAnchor.constraint(equalToConstant: 24),
+            iconBackground.heightAnchor.constraint(equalToConstant: 24),
+            icon.leadingAnchor.constraint(equalTo: iconBackground.leadingAnchor, constant: 4),
+            icon.trailingAnchor.constraint(equalTo: iconBackground.trailingAnchor, constant: -4),
+            icon.topAnchor.constraint(equalTo: iconBackground.topAnchor, constant: 4),
+            icon.bottomAnchor.constraint(equalTo: iconBackground.bottomAnchor, constant: -4),
+            content.leadingAnchor.constraint(equalTo: iconBackground.trailingAnchor, constant: 14),
+            content.trailingAnchor.constraint(equalTo: chevron.leadingAnchor, constant: -10),
+            content.topAnchor.constraint(equalTo: row.topAnchor, constant: 10),
+            content.bottomAnchor.constraint(equalTo: row.bottomAnchor, constant: -10),
+            chevron.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+            chevron.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            chevron.widthAnchor.constraint(equalToConstant: 10),
+            chevron.heightAnchor.constraint(equalToConstant: 14)
+        ])
+
+        return row
+    }
+
+    private func makeDivider() -> NSView {
+        let divider = NSBox()
+        divider.boxType = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            divider.heightAnchor.constraint(equalToConstant: 1)
+        ])
+        return divider
     }
 
     private func makeAnnotationShortcutRow(
@@ -762,25 +969,7 @@ public final class SettingsView:
         title: String,
         detail: String,
         control: NSView
-    ) -> NSBox {
-        let box = NSBox()
-        box.boxType = .custom
-        box.titlePosition = .noTitle
-        box.fillColor = .controlBackgroundColor
-        box.borderColor = .separatorColor
-        box.borderWidth = 1
-        box.cornerRadius = 10
-
-        let icon = NSImageView()
-        icon.image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: accessibilityLabel
-        )
-        icon.contentTintColor = .controlAccentColor
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.setAccessibilityLabel(accessibilityLabel)
-        icon.translatesAutoresizingMaskIntoConstraints = false
-
+    ) -> NSView {
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
 
@@ -793,39 +982,27 @@ public final class SettingsView:
         textStack.alignment = .leading
         textStack.spacing = 3
 
-        let header = NSStackView(views: [icon, textStack])
-        header.orientation = .horizontal
-        header.alignment = .centerY
-        header.spacing = 12
-
-        let stack = NSStackView(views: [header, control])
+        let stack = NSStackView(views: [textStack, control])
         stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 12
+        stack.alignment = .width
+        stack.spacing = 10
         stack.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(stack)
 
-        NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
-            stack.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
-            stack.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
-            icon.widthAnchor.constraint(equalToConstant: 30),
-            icon.heightAnchor.constraint(equalToConstant: 30),
-            control.widthAnchor.constraint(equalTo: stack.widthAnchor)
-        ])
-
-        return box
+        return makeSettingsRow(
+            symbolName: symbolName,
+            accessibilityLabel: accessibilityLabel,
+            content: stack
+        )
     }
 
     private func makePageHeader(content: NSView) -> NSBox {
         let box = NSBox()
         box.boxType = .custom
         box.titlePosition = .noTitle
-        box.fillColor = .controlBackgroundColor
+        box.fillColor = .clear
         box.borderColor = .clear
         box.borderWidth = 0
-        box.cornerRadius = 12
+        box.cornerRadius = 0
 
         content.translatesAutoresizingMaskIntoConstraints = false
         box.addSubview(content)
@@ -833,19 +1010,19 @@ public final class SettingsView:
         NSLayoutConstraint.activate([
             content.leadingAnchor.constraint(
                 equalTo: box.leadingAnchor,
-                constant: 24
+                constant: 0
             ),
             content.trailingAnchor.constraint(
                 equalTo: box.trailingAnchor,
-                constant: -24
+                constant: 0
             ),
             content.topAnchor.constraint(
                 equalTo: box.topAnchor,
-                constant: 24
+                constant: 0
             ),
             content.bottomAnchor.constraint(
                 equalTo: box.bottomAnchor,
-                constant: -20
+                constant: -4
             )
         ])
 
@@ -853,36 +1030,63 @@ public final class SettingsView:
     }
     
     private func makePageHeader(for page: SettingsPage) -> NSView {
+        let container = RoundedBackgroundView()
+        container.fillColor = .clear
+        container.cornerRadius = 0
+        container.translatesAutoresizingMaskIntoConstraints = false
+
+        let iconBackground = RoundedBackgroundView()
+        iconBackground.fillColor = .tertiaryLabelColor.withAlphaComponent(0.35)
+        iconBackground.cornerRadius = 13
+        iconBackground.translatesAutoresizingMaskIntoConstraints = false
+
         let icon = NSImageView()
         icon.image = NSImage(
             systemSymbolName: page.symbolName,
             accessibilityDescription: page.title
         )
-        icon.contentTintColor = .controlAccentColor
-        icon.imageScaling = .scaleProportionallyUpOrDown
+        icon.contentTintColor = .white
+        icon.imageScaling = .scaleProportionallyDown
         icon.translatesAutoresizingMaskIntoConstraints = false
+        iconBackground.addSubview(icon)
 
         let title = NSTextField(labelWithString: page.title)
-        title.font = .systemFont(ofSize: 20, weight: .semibold)
+        title.translatesAutoresizingMaskIntoConstraints = false
+        title.font = .systemFont(ofSize: 25, weight: .bold)
         title.alignment = .center
 
         let subtitle = NSTextField(wrappingLabelWithString: subtitle(for: page))
+        subtitle.translatesAutoresizingMaskIntoConstraints = false
         subtitle.font = .systemFont(ofSize: 13)
         subtitle.textColor = .secondaryLabelColor
         subtitle.alignment = .center
         subtitle.maximumNumberOfLines = 2
 
-        let stack = NSStackView(views: [icon, title, subtitle])
-        stack.orientation = .vertical
-        stack.alignment = .centerX
-        stack.spacing = 7
+        container.addSubview(iconBackground)
+        container.addSubview(title)
+        container.addSubview(subtitle)
 
         NSLayoutConstraint.activate([
-            icon.widthAnchor.constraint(equalToConstant: 50),
-            icon.heightAnchor.constraint(equalToConstant: 50)
+            container.heightAnchor.constraint(equalToConstant: 116),
+            iconBackground.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            iconBackground.centerXAnchor.constraint(equalTo: container.centerXAnchor),
+            iconBackground.widthAnchor.constraint(equalToConstant: 54),
+            iconBackground.heightAnchor.constraint(equalToConstant: 54),
+            icon.leadingAnchor.constraint(equalTo: iconBackground.leadingAnchor, constant: 8),
+            icon.trailingAnchor.constraint(equalTo: iconBackground.trailingAnchor, constant: -8),
+            icon.topAnchor.constraint(equalTo: iconBackground.topAnchor, constant: 8),
+            icon.bottomAnchor.constraint(equalTo: iconBackground.bottomAnchor, constant: -8),
+            title.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            title.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            title.topAnchor.constraint(equalTo: iconBackground.bottomAnchor, constant: 8),
+            title.heightAnchor.constraint(equalToConstant: 30),
+            subtitle.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 28),
+            subtitle.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -28),
+            subtitle.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 3),
+            subtitle.bottomAnchor.constraint(lessThanOrEqualTo: container.bottomAnchor, constant: -8)
         ])
 
-        return makePageHeader(content: stack)
+        return container
     }
     
     private func subtitle(for page: SettingsPage) -> String {
@@ -902,25 +1106,7 @@ public final class SettingsView:
         title: String,
         detail: String,
         control: NSView
-    ) -> NSBox {
-        let box = NSBox()
-        box.boxType = .custom
-        box.titlePosition = .noTitle
-        box.fillColor = .controlBackgroundColor
-        box.borderColor = .separatorColor
-        box.borderWidth = 1
-        box.cornerRadius = 10
-
-        let icon = NSImageView()
-        icon.image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: accessibilityLabel
-        )
-        icon.contentTintColor = .controlAccentColor
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.setAccessibilityLabel(accessibilityLabel)
-        icon.translatesAutoresizingMaskIntoConstraints = false
-
+    ) -> NSView {
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         let detailLabel = NSTextField(wrappingLabelWithString: detail)
@@ -931,30 +1117,24 @@ public final class SettingsView:
         textStack.alignment = .leading
         textStack.spacing = 3
 
-        let leftStack = NSStackView(views: [icon, textStack])
-        leftStack.orientation = .horizontal
-        leftStack.alignment = .centerY
-        leftStack.spacing = 12
-
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        let row = NSStackView(views: [leftStack, spacer, control])
+        let row = NSStackView(views: [textStack, spacer, control])
         row.orientation = .horizontal
         row.alignment = .centerY
         row.spacing = 12
         row.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(row)
 
         NSLayoutConstraint.activate([
-            row.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
-            row.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
-            row.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
-            row.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
-            icon.widthAnchor.constraint(equalToConstant: 30),
-            icon.heightAnchor.constraint(equalToConstant: 30),
             textStack.widthAnchor.constraint(greaterThanOrEqualToConstant: 245)
         ])
-        return box
+
+        return makeSettingsRow(
+            symbolName: symbolName,
+            accessibilityLabel: accessibilityLabel,
+            content: row,
+            showsChevron: true
+        )
     }
     
     private func makeReadOnlyValue(_ value: String) -> NSTextField {
@@ -988,25 +1168,7 @@ public final class SettingsView:
         detail: String,
         control: NSView,
         centersControl: Bool = false
-    ) -> NSBox {
-        let box = NSBox()
-        box.boxType = .custom
-        box.titlePosition = .noTitle
-        box.fillColor = .controlBackgroundColor
-        box.borderColor = .separatorColor
-        box.borderWidth = 1
-        box.cornerRadius = 10
-
-        let icon = NSImageView()
-        icon.image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: accessibilityLabel
-        )
-        icon.contentTintColor = .controlAccentColor
-        icon.imageScaling = .scaleProportionallyUpOrDown
-        icon.setAccessibilityLabel(accessibilityLabel)
-        icon.translatesAutoresizingMaskIntoConstraints = false
-
+    ) -> NSView {
         let titleLabel = NSTextField(labelWithString: title)
         titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
         let detailLabel = NSTextField(wrappingLabelWithString: detail)
@@ -1033,20 +1195,7 @@ public final class SettingsView:
             for: .horizontal
         )
 
-        let row = NSStackView(views: [icon, contentView])
-        row.orientation = .horizontal
-        row.alignment = .top
-        row.spacing = 12
-        row.translatesAutoresizingMaskIntoConstraints = false
-        box.addSubview(row)
-
         var constraints = [
-            row.leadingAnchor.constraint(equalTo: box.leadingAnchor, constant: 14),
-            row.trailingAnchor.constraint(equalTo: box.trailingAnchor, constant: -14),
-            row.topAnchor.constraint(equalTo: box.topAnchor, constant: 12),
-            row.bottomAnchor.constraint(equalTo: box.bottomAnchor, constant: -12),
-            icon.widthAnchor.constraint(equalToConstant: 30),
-            icon.heightAnchor.constraint(equalToConstant: 30),
             textStack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
             textStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
             textStack.topAnchor.constraint(equalTo: contentView.topAnchor),
@@ -1056,7 +1205,12 @@ public final class SettingsView:
 
         if centersControl {
             constraints.append(
-                control.centerXAnchor.constraint(equalTo: contentView.centerXAnchor)
+                control.leadingAnchor.constraint(equalTo: contentView.leadingAnchor)
+            )
+            constraints.append(
+                control.trailingAnchor.constraint(
+                    lessThanOrEqualTo: contentView.trailingAnchor
+                )
             )
         } else {
             constraints.append(
@@ -1071,7 +1225,11 @@ public final class SettingsView:
 
         NSLayoutConstraint.activate(constraints)
 
-        return box
+        return makeSettingsRow(
+            symbolName: symbolName,
+            accessibilityLabel: accessibilityLabel,
+            content: contentView
+        )
     }
 
     private func makeFileNamingControl() -> NSView {
@@ -1097,7 +1255,7 @@ public final class SettingsView:
 
         let stack = NSStackView(views: [templateRow, previewRow, actionRow])
         stack.orientation = .vertical
-        stack.alignment = .centerX
+        stack.alignment = .leading
         stack.spacing = 7
         stack.translatesAutoresizingMaskIntoConstraints = false
 
@@ -1283,12 +1441,16 @@ public final class SettingsView:
         stack.distribution = .fill
         stack.spacing = 14
         stack.translatesAutoresizingMaskIntoConstraints = false
+        ([headerRow] + sections).forEach {
+            $0.translatesAutoresizingMaskIntoConstraints = false
+            $0.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
+        }
 
         documentView.translatesAutoresizingMaskIntoConstraints = false
         documentView.addSubview(stack)
 
         scrollView.documentView = documentView
-        scrollView.hasVerticalScroller = true
+        scrollView.hasVerticalScroller = false
         scrollView.hasHorizontalScroller = false
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
@@ -1297,10 +1459,10 @@ public final class SettingsView:
             documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
             documentView.heightAnchor.constraint(greaterThanOrEqualTo: scrollView.contentView.heightAnchor),
 
-            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 14),
-            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -14),
-            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 52),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -24)
+            stack.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 34),
+            stack.trailingAnchor.constraint(equalTo: documentView.trailingAnchor, constant: -34),
+            stack.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 70),
+            stack.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -28)
         ])
 
         return scrollView

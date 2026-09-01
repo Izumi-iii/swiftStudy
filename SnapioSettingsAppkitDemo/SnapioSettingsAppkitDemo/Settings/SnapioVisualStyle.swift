@@ -78,13 +78,16 @@ enum SnapioVisualStyle {
                 : NSFont.systemFontSize,
             weight: emphasis == .primary ? .medium : .regular
         )
-        button.image = NSImage(
-            systemSymbolName: symbolName,
-            accessibilityDescription: accessibilityLabel ?? button.title
-        )
-        button.imagePosition = presentation == .iconOnly
-            ? .imageOnly
-            : .imageLeading
+        if presentation == .iconOnly {
+            button.image = NSImage(
+                systemSymbolName: symbolName,
+                accessibilityDescription: accessibilityLabel ?? button.title
+            )
+            button.imagePosition = .imageOnly
+        } else {
+            button.image = nil
+            button.imagePosition = .noImage
+        }
         button.imageScaling = .scaleProportionallyDown
         button.toolTip = toolTip
         button.setAccessibilityLabel(accessibilityLabel ?? button.title)
@@ -103,7 +106,7 @@ enum SnapioVisualStyle {
 
         switch emphasis {
         case .primary:
-            button.bezelColor = .controlAccentColor
+            button.bezelColor = nil
             button.contentTintColor = nil
         case .standard:
             button.bezelColor = nil
