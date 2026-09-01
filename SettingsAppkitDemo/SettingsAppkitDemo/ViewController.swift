@@ -74,7 +74,7 @@ final class ViewController: NSViewController {
         splitView.addArrangedSubview(detailView)
 
         NSLayoutConstraint.activate([
-            sidebarView.widthAnchor.constraint(equalToConstant: 220)
+            sidebarView.widthAnchor.constraint(equalToConstant: 230)
         ])
 
         if let appearanceIndex = rows.firstIndex(where: { $0.title == "外观" }) {
@@ -86,16 +86,14 @@ final class ViewController: NSViewController {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        container.layer?.backgroundColor = NSColor.clear.cgColor
+        container.layer?.masksToBounds = false
 
-        let panel = NSVisualEffectView()
-        panel.translatesAutoresizingMaskIntoConstraints = false
-        panel.material = .sidebar
-        panel.blendingMode = .behindWindow
-        panel.state = .active
-        panel.wantsLayer = true
-        panel.layer?.cornerRadius = 14
-        panel.layer?.masksToBounds = true
+        let shadowPanel = SidebarPanelShadowView()
+        shadowPanel.translatesAutoresizingMaskIntoConstraints = false
+
+        let contentPanel = SidebarPanelContentView()
+        contentPanel.translatesAutoresizingMaskIntoConstraints = false
 
         let searchField = NSSearchField()
         searchField.translatesAutoresizingMaskIntoConstraints = false
@@ -118,24 +116,30 @@ final class ViewController: NSViewController {
 
         scrollView.documentView = tableView
 
-        container.addSubview(panel)
-        panel.addSubview(searchField)
-        panel.addSubview(scrollView)
+        container.addSubview(shadowPanel)
+        shadowPanel.addSubview(contentPanel)
+        contentPanel.addSubview(searchField)
+        contentPanel.addSubview(scrollView)
 
         NSLayoutConstraint.activate([
-            panel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
-            panel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -8),
-            panel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-            panel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
+            shadowPanel.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 8),
+            shadowPanel.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -18),
+            shadowPanel.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
+            shadowPanel.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
 
-            searchField.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 12),
-            searchField.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -12),
-            searchField.topAnchor.constraint(equalTo: panel.topAnchor, constant: 54),
+            contentPanel.leadingAnchor.constraint(equalTo: shadowPanel.leadingAnchor, constant: 8),
+            contentPanel.trailingAnchor.constraint(equalTo: shadowPanel.trailingAnchor, constant: -8),
+            contentPanel.topAnchor.constraint(equalTo: shadowPanel.topAnchor, constant: 8),
+            contentPanel.bottomAnchor.constraint(equalTo: shadowPanel.bottomAnchor, constant: -8),
 
-            scrollView.leadingAnchor.constraint(equalTo: panel.leadingAnchor, constant: 8),
-            scrollView.trailingAnchor.constraint(equalTo: panel.trailingAnchor, constant: -8),
+            searchField.leadingAnchor.constraint(equalTo: contentPanel.leadingAnchor, constant: 12),
+            searchField.trailingAnchor.constraint(equalTo: contentPanel.trailingAnchor, constant: -12),
+            searchField.topAnchor.constraint(equalTo: contentPanel.topAnchor, constant: 60),
+
+            scrollView.leadingAnchor.constraint(equalTo: contentPanel.leadingAnchor, constant: 8),
+            scrollView.trailingAnchor.constraint(equalTo: contentPanel.trailingAnchor, constant: -8),
             scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 8),
-            scrollView.bottomAnchor.constraint(equalTo: panel.bottomAnchor, constant: -10)
+            scrollView.bottomAnchor.constraint(equalTo: contentPanel.bottomAnchor, constant: -10)
         ])
 
         return container
@@ -145,7 +149,7 @@ final class ViewController: NSViewController {
         let container = NSView()
         container.translatesAutoresizingMaskIntoConstraints = false
         container.wantsLayer = true
-        container.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        container.layer?.backgroundColor = NSColor(calibratedWhite: 0.985, alpha: 1).cgColor
 
         let scrollView = NSScrollView()
         scrollView.translatesAutoresizingMaskIntoConstraints = false
@@ -178,7 +182,7 @@ final class ViewController: NSViewController {
 
             documentView.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
 
-            detailStackView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 22),
+            detailStackView.leadingAnchor.constraint(equalTo: documentView.leadingAnchor, constant: 6),
             detailStackView.topAnchor.constraint(equalTo: documentView.topAnchor, constant: 20),
             detailStackView.widthAnchor.constraint(equalToConstant: 460),
             detailStackView.bottomAnchor.constraint(lessThanOrEqualTo: documentView.bottomAnchor, constant: -36)
@@ -457,14 +461,84 @@ private final class FloatingSplitView: NSSplitView {
     }
 }
 
+private final class SidebarPanelShadowView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.masksToBounds = false
+    }
+
+    override func layout() {
+        super.layout()
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let panelRect = bounds.insetBy(dx: 8, dy: 8)
+
+        for step in 0..<7 {
+            let outset = CGFloat(step)
+            let alpha = CGFloat(0.075 - Double(step) * 0.008)
+            let shadowRect = panelRect.insetBy(dx: -outset, dy: -outset)
+            NSColor.black.withAlphaComponent(max(alpha, 0.012)).setStroke()
+
+            let path = NSBezierPath(roundedRect: shadowRect, xRadius: 14 + outset, yRadius: 14 + outset)
+            path.lineWidth = 1
+            path.stroke()
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
+private final class SidebarPanelContentView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(calibratedWhite: 0.955, alpha: 0.98).cgColor
+        layer?.cornerRadius = 14
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        layer?.masksToBounds = true
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+}
+
 private final class RoundedGroupView: NSView {
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(calibratedWhite: 0.965, alpha: 1).cgColor
+        layer?.cornerRadius = 10
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.08
+        layer?.shadowRadius = 10
+        layer?.shadowOffset = NSSize(width: 0, height: -2)
+        layer?.masksToBounds = false
+    }
+
     override var isFlipped: Bool {
         true
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor(calibratedWhite: 0.965, alpha: 1).setFill()
-        NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
+    override func layout() {
+        super.layout()
+        layer?.shadowPath = CGPath(roundedRect: bounds, cornerWidth: 10, cornerHeight: 10, transform: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
     }
 }
 
@@ -522,32 +596,34 @@ private final class SidebarItemCellView: NSTableCellView {
 }
 
 private final class SidebarIconView: NSView {
-    private let symbolName: String
     private let color: NSColor
 
     init(symbolName: String, color: NSColor) {
-        self.symbolName = symbolName
         self.color = color
         super.init(frame: .zero)
         wantsLayer = true
+
+        let imageView = NSImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
+        imageView.image?.isTemplate = true
+        imageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 11, weight: .semibold)
+        imageView.contentTintColor = .white
+        imageView.imageScaling = .scaleProportionallyDown
+
+        addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 4),
+            imageView.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -4),
+            imageView.topAnchor.constraint(equalTo: topAnchor, constant: 4),
+            imageView.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4)
+        ])
     }
 
     override func draw(_ dirtyRect: NSRect) {
         color.setFill()
         NSBezierPath(roundedRect: bounds, xRadius: 5, yRadius: 5).fill()
-
-        let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)
-        image?.isTemplate = true
-
-        NSGraphicsContext.saveGraphicsState()
-        NSColor.white.set()
-        image?.draw(
-            in: bounds.insetBy(dx: 4, dy: 4),
-            from: .zero,
-            operation: .sourceOver,
-            fraction: 1
-        )
-        NSGraphicsContext.restoreGraphicsState()
     }
 
     required init?(coder: NSCoder) {
