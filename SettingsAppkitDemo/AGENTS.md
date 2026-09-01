@@ -21,36 +21,41 @@ Treat all labels such as `王杰`, `今晚安装软件更新`, `外观`, and the
 
 Inspect these files first:
 
+- `SettingsAppkitDemo/SettingsWindowController.swift`
 - `SettingsAppkitDemo/AppDelegate.swift`
 - `SettingsAppkitDemo/ViewController.swift`
 - `SettingsAppkitDemo/main.swift`
 - `SettingsAppkitDemo.xcodeproj/project.pbxproj`
 
-Most reusable UI code is in `ViewController.swift`. Window setup lives in `AppDelegate.swift`. The project entry configuration matters because this demo intentionally does not start from the default storyboard.
+Most reusable UI code is in `ViewController.swift`. Window setup lives in `SettingsWindowController.swift`. `AppDelegate.swift` owns and shows the window controller. The project entry configuration matters because this demo intentionally does not start from the default storyboard.
 
 ## Migration Priority
 
 Migrate in this order:
 
-1. Window setup from `AppDelegate.showMainWindow()`
-2. Traffic-light repositioning from `AppDelegate.positionTrafficLightButtons(in:)`
-3. Split layout and sidebar container from `ViewController.loadView()` and `makeSidebar()`
+1. Window setup from `SettingsWindowController`
+2. Traffic-light repositioning from `SettingsWindowController.positionTrafficLightButtons(in:)`
+3. Split layout from `ViewController`, which is an `NSSplitViewController`
 4. Sidebar floating panel classes
 5. Sidebar row, icon, account, and badge cell classes
 6. Right-side detail layout from `makeDetail()`
 7. Card group helpers and card classes
 8. Real product settings data and controls
 
-Do not start by copying only the right-side setting rows. The native Settings feel mainly comes from the window/titlebar integration and the left floating sidebar layer.
+Do not start by copying only the right-side setting rows. The native Settings feel mainly comes from the window/titlebar integration, the native sidebar split item, and the left floating sidebar layer.
 
 ## Window Setup
 
-`AppDelegate.showMainWindow()` creates an `NSWindow` manually:
+`SettingsWindowController` creates an `NSWindow` manually:
 
 ```swift
-let viewController = ViewController()
-let window = NSWindow(contentViewController: viewController)
-window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
+let window = NSWindow(
+    contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
+    styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+    backing: .buffered,
+    defer: false
+)
+
 window.titlebarAppearsTransparent = true
 window.titleVisibility = .hidden
 window.toolbarStyle = .unified
@@ -63,7 +68,7 @@ Important requirements:
 - hide the title text
 - make the titlebar transparent
 - keep the window alive with `isReleasedWhenClosed = false`
-- call `makeKeyAndOrderFront(nil)` before adjusting titlebar buttons
+- call `showWindow(_:)` before adjusting titlebar buttons
 
 Without `.fullSizeContentView`, the sidebar cannot visually occupy the titlebar area and the traffic-light buttons will look detached from the sidebar panel.
 
@@ -85,7 +90,7 @@ frame.origin.y -= 10
 The call is intentionally delayed:
 
 ```swift
-window.makeKeyAndOrderFront(nil)
+super.showWindow(sender)
 
 DispatchQueue.main.async {
     self.positionTrafficLightButtons(in: window)
@@ -121,7 +126,41 @@ Do not blindly copy this into every project. If the target app already has a sta
 
 ## Sidebar Layout
 
-`ViewController.loadView()` uses `FloatingSplitView`, a custom `NSSplitView` whose divider thickness is zero. The left arranged subview is fixed to about `230` points wide.
+`ViewController` is an `NSSplitViewController`. This is deliberate: the left side should be registered with AppKit as a real sidebar item.
+
+The key API is:
+
+```swift
+let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+```
+
+This is different from:
+
+```swift
+NSSplitViewItem(viewController: sidebarController)
+```
+
+`sidebarWithViewController` gives the left side native sidebar semantics. It can participate correctly in AppKit's split-view/sidebar system, toolbar/titlebar layout, and sidebar toggling behavior.
+
+Current split setup:
+
+```swift
+splitView.isVertical = true
+splitView.dividerStyle = .thin
+
+let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+sidebarItem.minimumThickness = 230
+sidebarItem.maximumThickness = 230
+sidebarItem.canCollapse = false
+
+let detailItem = NSSplitViewItem(viewController: detailController)
+detailItem.minimumThickness = 430
+
+addSplitViewItem(sidebarItem)
+addSplitViewItem(detailItem)
+```
+
+The sidebar item is fixed at `230` points for now because the floating panel, traffic-light position, and search-field offset were tuned for that width.
 
 `makeSidebar()` builds the floating sidebar in layers:
 
@@ -292,7 +331,8 @@ These are examples, not product requirements. In a real migration, replace them 
 
 For a direct migration, copy or port these pieces:
 
-- `FloatingSplitView`
+- `SettingsWindowController`
+- `ViewController: NSSplitViewController`
 - `SidebarPanelShadowView`
 - `SidebarPanelContentView`
 - `SidebarRowView`
@@ -312,6 +352,7 @@ For a direct migration, copy or port these pieces:
 - `makeSettingsRow(title:subtitle:control:)`
 - `makeDivider()`
 - `positionTrafficLightButtons(in:)`
+- the `NSSplitViewItem(sidebarWithViewController:)` split setup
 
 Then replace the demo data, labels, and controls.
 
@@ -326,6 +367,7 @@ Do not blindly copy:
 - fixed window title
 - `main.swift`, unless the target app also needs this manual AppKit entry
 - `project.pbxproj` storyboard changes, unless the target app is also moving away from storyboard startup
+- old hand-written split-view code if the target can use `NSSplitViewController`
 
 ## Common Failure Cases
 
@@ -333,14 +375,20 @@ If no window appears:
 
 - check whether storyboard startup and manual app entry are conflicting
 - check whether `NSApp.setActivationPolicy(.regular)` is called
-- check whether the window is retained by a strong property
-- check whether `makeKeyAndOrderFront(nil)` is reached
+- check whether the window controller is retained by a strong property
+- check whether `showWindow(_:)` is reached
 
 If traffic-light buttons do not move:
 
-- ensure `positionTrafficLightButtons(in:)` runs after `makeKeyAndOrderFront(nil)`
+- ensure `positionTrafficLightButtons(in:)` runs after `showWindow(_:)`
 - keep the `DispatchQueue.main.async` delay
 - confirm the window uses `.fullSizeContentView`
+
+If the sidebar does not behave like a native sidebar:
+
+- confirm the outer controller is an `NSSplitViewController`
+- confirm the left item uses `NSSplitViewItem(sidebarWithViewController:)`
+- do not replace it with a plain `NSSplitViewItem(viewController:)` unless native sidebar behavior is not needed
 
 If the sidebar has no floating shadow:
 

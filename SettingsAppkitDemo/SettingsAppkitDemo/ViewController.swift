@@ -1,6 +1,6 @@
 import Cocoa
 
-final class ViewController: NSViewController {
+final class ViewController: NSSplitViewController {
     private enum SidebarRow {
         case account
         case update
@@ -53,29 +53,29 @@ final class ViewController: NSViewController {
     private let detailStackView = NSStackView()
     private let detailTitleLabel = NSTextField(labelWithString: "外观")
 
-    override func loadView() {
-        let splitView = FloatingSplitView()
-        splitView.isVertical = true
-        splitView.dividerStyle = .thin
-        view = splitView
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
 
-        guard let splitView = view as? NSSplitView else {
-            return
-        }
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
 
         let sidebarView = makeSidebar()
         let detailView = makeDetail()
+        let sidebarController = NSViewController()
+        let detailController = NSViewController()
+        sidebarController.view = sidebarView
+        detailController.view = detailView
 
-        splitView.addArrangedSubview(sidebarView)
-        splitView.addArrangedSubview(detailView)
+        let sidebarItem = NSSplitViewItem(sidebarWithViewController: sidebarController)
+        sidebarItem.minimumThickness = 230
+        sidebarItem.maximumThickness = 230
+        sidebarItem.canCollapse = false
 
-        NSLayoutConstraint.activate([
-            sidebarView.widthAnchor.constraint(equalToConstant: 230)
-        ])
+        let detailItem = NSSplitViewItem(viewController: detailController)
+        detailItem.minimumThickness = 430
+
+        addSplitViewItem(sidebarItem)
+        addSplitViewItem(detailItem)
 
         if let appearanceIndex = rows.firstIndex(where: { $0.title == "外观" }) {
             tableView.selectRowIndexes(IndexSet(integer: appearanceIndex), byExtendingSelection: false)
@@ -449,15 +449,6 @@ private final class SidebarRowView: NSTableRowView {
         let selectionRect = bounds.insetBy(dx: 2, dy: 1)
         NSColor.controlAccentColor.setFill()
         NSBezierPath(roundedRect: selectionRect, xRadius: 7, yRadius: 7).fill()
-    }
-}
-
-private final class FloatingSplitView: NSSplitView {
-    override var dividerThickness: CGFloat {
-        0
-    }
-
-    override func drawDivider(in rect: NSRect) {
     }
 }
 
